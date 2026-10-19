@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 沙箱冒烟测试：服务启动后在 sandbox 目录执行 ./smoke_test.sh .（读取 .env 里的 key）
 set -u
-cd "$1"
+cd "$1" || exit 1
 KEY=$(grep '^SANDBOX_API_KEY=' .env | cut -d= -f2)
 B=http://127.0.0.1:8090
 H="X-API-Key: $KEY"

@@ -27,6 +27,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	pullCtx, cancelPull := context.WithTimeout(ctx, 60*time.Minute)
+	err = m.EnsureImage(pullCtx)
+	cancelPull()
+	if err != nil {
+		fatal("prepare sandbox image", err)
+	}
+
 	initCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	err = m.Init(initCtx)
 	cancel()

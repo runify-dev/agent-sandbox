@@ -17,6 +17,7 @@ import (
 
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
@@ -91,10 +92,29 @@ func NewManager(cfg *Config) (*Manager, error) {
 }
 
 // Init 检查镜像是否存在，并清理上次进程遗留的沙箱容器
-func (m *Manager) Init(ctx context.Context) error {
-	if _, err := m.cli.ImageInspect(ctx, m.cfg.Image); err != nil {
-		return fmt.Errorf("sandbox image %q not available: %w", m.cfg.Image, err)
+// EnsureImage 确保运行时镜像在本地，不存在时自动拉取（镜像较大，可能需要几分钟）
+func (m *Manager) EnsureImage(ctx context.Context) error {
+	if _, err := m.cli.ImageInspect(ctx, m.cfg.Image); err == nil {
+		return nil
 	}
+	slog.Info("sandbox image not found locally, pulling", "image", m.cfg.Image)
+	rc, err := m.cli.ImagePull(ctx, m.cfg.Image, image.PullOptions{})
+	if err != nil {
+		return fmt.Errorf("pull sandbox image %q: %w", m.cfg.Image, err)
+	}
+	defer rc.Close()
+	// 拉取进度以 JSON 流返回，必须读完才算拉取结束
+	if _, err := io.Copy(io.Discard, rc); err != nil {
+		return fmt.Errorf("pull sandbox image %q: %w", m.cfg.Image, err)
+	}
+	if _, err := m.cli.ImageInspect(ctx, m.cfg.Image); err != nil {
+		return fmt.Errorf("sandbox image %q not available after pull: %w", m.cfg.Image, err)
+	}
+	slog.Info("sandbox image pulled", "image", m.cfg.Image)
+	return nil
+}
+
+func (m *Manager) Init(ctx context.Context) error {
 	if m.cfg.Network == "proxy" {
 		if err := m.initEgressNetwork(ctx); err != nil {
 			return err

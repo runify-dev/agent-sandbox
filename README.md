@@ -20,7 +20,23 @@
 
 建议在给模型的工具说明里写明：当前对话的工作目录是 `/opt/workspace`，生成的文件都放在这里；`/opt/user` 是用户的长期空间，只有用户明确要求时才使用。scope 和 session 由业务方根据当前会话填写，不要让模型传。
 
-## 构建与启动
+## 安装（生产环境）
+
+Linux 服务器上一条命令完成安装：没有 Docker 时自动安装，生成 API key，拉取 GHCR 上发布的镜像并启动。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/runify-dev/agent-sandbox/main/install.sh | sudo bash
+```
+
+- 安装到 `/opt/agent-sandbox`，数据在 `/opt/agent-sandbox/data`，配置和 API key 在 `/opt/agent-sandbox/.env`
+- 服务由 Docker Compose 管理（`restart: unless-stopped`），Docker 本身由 systemd 管理并开机自启，不需要额外的 systemd 服务
+- 默认只监听 `127.0.0.1:8090`。需要给其他机器上的 MaxKB 调用时，在 `.env` 里设置 `SANDBOX_BIND=0.0.0.0` 并配好防火墙
+- 指定版本：`curl -fsSL .../install.sh | sudo VERSION=0.1.0 bash`
+- 升级：重新执行安装命令，会保留已有的 `.env`
+- 离线安装：在能联网的机器上 `docker save` 两个镜像，拷到服务器上 `docker load`，然后用 `AGENT_SANDBOX_SKIP_PULL=1` 执行 `install.sh`
+
+## 从源码构建与启动（开发）
+
 
 ```bash
 cd agent-sandbox
