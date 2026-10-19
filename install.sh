@@ -9,7 +9,11 @@
 #   VERSION       镜像版本，默认 latest
 #   SANDBOX_BIND  API 监听地址，默认 127.0.0.1（只允许本机访问）
 #   SANDBOX_PORT  API 端口，默认 8090
+#   MIRROR=aliyun 安装 Docker 时使用阿里云镜像源（国内服务器）
 #   AGENT_SANDBOX_SKIP_PULL=1  不拉取镜像（离线安装：先用 docker load 导入镜像）
+#   AGENT_SANDBOX_IMAGE_PREFIX 镜像仓库前缀，默认 ghcr.io/runify-dev/，可改为自建的镜像仓库
+#
+# 脚本只需要下载这一个文件，compose 配置内嵌在下面的 write_compose 中。
 #
 # 重复执行即为升级：保留已有的 .env（包括 API key），拉取新镜像并重启服务。
 set -euo pipefail
@@ -31,7 +35,11 @@ fi
 # 1. Docker
 if ! command -v docker >/dev/null 2>&1; then
   log "未检测到 Docker，开始安装"
-  curl -fsSL https://get.docker.com | sh
+  if [ "${MIRROR:-}" = "aliyun" ]; then
+    curl -fsSL --retry 3 https://get.docker.com | sh -s -- --mirror Aliyun
+  else
+    curl -fsSL --retry 3 https://get.docker.com | sh
+  fi
 fi
 if command -v systemctl >/dev/null 2>&1; then
   systemctl enable --now docker >/dev/null 2>&1 || true
@@ -39,19 +47,54 @@ fi
 docker info >/dev/null 2>&1 || die "Docker 未运行"
 docker compose version >/dev/null 2>&1 || die "需要 Docker Compose v2（docker compose 命令）"
 
-# 2. 目录与 compose 文件
+# 2. 目录与 compose 文件（每次安装 / 升级都覆盖，配置都在 .env 里）
 log "安装目录 $INSTALL_DIR，数据目录 $DATA_DIR"
 mkdir -p "$INSTALL_DIR" "$DATA_DIR"
-# 从仓库目录执行时使用本地文件；通过 curl | bash 执行时脚本不在磁盘上，从 GitHub 下载
-SCRIPT_DIR=""
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
-  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-fi
-if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/docker-compose.prod.yml" ]; then
-  cp "$SCRIPT_DIR/docker-compose.prod.yml" "$INSTALL_DIR/docker-compose.yml"
-else
-  curl -fsSL "$REPO_RAW/docker-compose.prod.yml" -o "$INSTALL_DIR/docker-compose.yml"
-fi
+write_compose() {
+  cat <<'COMPOSE'
+# 由 install.sh 生成，升级时会被覆盖；修改配置请编辑同目录的 .env
+# 运行时镜像较大，服务第一次启动时如果本地没有会自动拉取，期间 /healthz 不可用
+services:
+  sandbox-server:
+    image: ${AGENT_SANDBOX_IMAGE_PREFIX-ghcr.io/runify-dev/}agent-sandbox-server:${AGENT_SANDBOX_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:?SANDBOX_API_KEY is required}
+      SANDBOX_IMAGE: ${AGENT_SANDBOX_IMAGE_PREFIX-ghcr.io/runify-dev/}agent-sandbox-runtime:${AGENT_SANDBOX_VERSION:-latest}
+      SANDBOX_DATA_ROOT: ${SANDBOX_DATA_ROOT:?SANDBOX_DATA_ROOT is required}
+      SANDBOX_NETWORK: ${SANDBOX_NETWORK:-proxy}
+      SANDBOX_EGRESS_ALLOWLIST: ${SANDBOX_EGRESS_ALLOWLIST:-pypi.org,files.pythonhosted.org,registry.npmjs.org}
+      SANDBOX_EGRESS_PRIVATE_CIDRS: ${SANDBOX_EGRESS_PRIVATE_CIDRS:-}
+      SANDBOX_PIP_INDEX_URL: ${SANDBOX_PIP_INDEX_URL:-}
+      SANDBOX_NPM_REGISTRY: ${SANDBOX_NPM_REGISTRY:-}
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-}
+      SANDBOX_MEMORY_MB: ${SANDBOX_MEMORY_MB:-1024}
+      SANDBOX_CPUS: ${SANDBOX_CPUS:-1.0}
+      SANDBOX_MAX_SESSIONS: ${SANDBOX_MAX_SESSIONS:-100}
+      SANDBOX_MAX_TIMEOUT: ${SANDBOX_MAX_TIMEOUT:-600}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 挂载源路径由宿主机上的 dockerd 解析，所以服务容器内外的路径必须一致
+      - ${SANDBOX_DATA_ROOT}:${SANDBOX_DATA_ROOT}
+    networks:
+      default: {}
+      egress:
+        aliases: [sandbox-egress-proxy]
+    ports:
+      - "${SANDBOX_BIND:-127.0.0.1}:${SANDBOX_PORT:-8090}:8090"
+    logging:
+      driver: json-file
+      options:
+        max-size: 50m
+        max-file: "3"
+
+networks:
+  egress:
+    name: agent-sandbox-egress
+    internal: true
+COMPOSE
+}
+write_compose >"$INSTALL_DIR/docker-compose.yml"
 
 # 3. 配置：已有 .env 时只更新版本，其余保持不变
 ENV_FILE="$INSTALL_DIR/.env"

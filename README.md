@@ -33,6 +33,7 @@ curl -fsSL https://raw.githubusercontent.com/runify-dev/agent-sandbox/main/insta
 - 默认只监听 `127.0.0.1:8090`。需要给其他机器上的 MaxKB 调用时，在 `.env` 里设置 `SANDBOX_BIND=0.0.0.0` 并配好防火墙
 - 指定版本：`curl -fsSL .../install.sh | sudo VERSION=0.1.0 bash`
 - 升级：重新执行安装命令，会保留已有的 `.env`
+- 国内服务器：Docker 没装时可以用 `curl -fsSL .../install.sh | sudo MIRROR=aliyun bash` 从阿里云源安装 Docker。脚本只需要下载 `install.sh` 这一个文件；如果 `raw.githubusercontent.com` 不稳定，也可以 `git clone` 仓库后直接执行 `sudo ./install.sh`。GHCR 拉取镜像慢时，可以把镜像同步到自己的仓库并设置 `AGENT_SANDBOX_IMAGE_PREFIX`
 - 离线安装：在能联网的机器上 `docker save` 两个镜像，拷到服务器上 `docker load`，然后用 `AGENT_SANDBOX_SKIP_PULL=1` 执行 `install.sh`
 
 ## 从源码构建与启动（开发）
