@@ -1,0 +1,43 @@
+services:
+  # 只用于构建运行时镜像：docker compose --profile build build sandbox-runtime
+  sandbox-runtime:
+    image: agent-sandbox-runtime:latest
+    build:
+      context: ./runtime
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+        PIP_INDEX_URL: ${BUILD_PIP_INDEX_URL:-}
+    profiles: ["build"]
+
+  sandbox-server:
+    image: agent-sandbox-server:latest
+    build: .
+    restart: unless-stopped
+    environment:
+      SANDBOX_API_KEY: ${SANDBOX_API_KEY:?SANDBOX_API_KEY is required}
+      SANDBOX_IMAGE: agent-sandbox-runtime:latest
+      SANDBOX_DATA_ROOT: ${SANDBOX_DATA_ROOT:-/opt}
+      # none：断网；proxy：只能通过白名单代理访问外网
+      SANDBOX_NETWORK: ${SANDBOX_NETWORK:-proxy}
+      SANDBOX_EGRESS_ALLOWLIST: ${SANDBOX_EGRESS_ALLOWLIST:-pypi.org,files.pythonhosted.org,registry.npmjs.org}
+      SANDBOX_EGRESS_PRIVATE_CIDRS: ${SANDBOX_EGRESS_PRIVATE_CIDRS:-}
+      SANDBOX_PIP_INDEX_URL: ${SANDBOX_PIP_INDEX_URL:-}
+      SANDBOX_NPM_REGISTRY: ${SANDBOX_NPM_REGISTRY:-}
+      # SANDBOX_RUNTIME: runsc   # 宿主机安装 gVisor 后打开
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # 挂载源路径由宿主机上的 dockerd 解析，所以服务容器内外的路径必须一致
+      - ${SANDBOX_DATA_ROOT:-/opt}:${SANDBOX_DATA_ROOT:-/opt}
+    networks:
+      # default 网络用于暴露 API 端口，也是白名单代理访问外网的出口
+      default: {}
+      egress:
+        aliases: [sandbox-egress-proxy]
+    ports:
+      - "127.0.0.1:8090:8090"
+
+networks:
+  # 沙箱容器只接入这个网络。internal 网络没有出网路由，只能访问同网络里的白名单代理
+  egress:
+    name: agent-sandbox-egress
+    internal: true

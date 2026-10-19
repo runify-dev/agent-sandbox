@@ -1,0 +1,60 @@
+# 网络与解析
+requests
+httpx
+beautifulsoup4
+lxml
+pyyaml
+chardet
+python-dateutil
+pytz
+
+# 数据处理与计算
+numpy
+pandas
+scipy
+sympy
+scikit-learn
+tabulate
+
+# 可视化
+matplotlib
+seaborn
+
+# 图像与视频
+pillow
+opencv-python-headless
+imageio
+qrcode
+
+# Word
+python-docx
+docxtpl
+docx2python
+mammoth
+
+# Excel
+openpyxl
+xlrd
+xlsxwriter
+xlwt
+pyxlsb
+odfpy
+
+# PPT
+python-pptx
+
+# PDF
+pypdf
+pdfplumber
+pikepdf
+pdf2image
+reportlab
+fpdf2
+weasyprint
+
+# 文档转换与 OCR
+pypandoc
+pytesseract
+markdown
+html2text
+jinja2
