@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -race ./...
+
+      - name: go build
+        run: CGO_ENABLED=0 go build -o /tmp/sandbox-server .
+
+  integration:
+    name: Integration (smoke tests)
+    needs: go
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build runtime image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./runtime
+          load: true
+          tags: agent-sandbox-runtime:latest
+          cache-from: type=gha,scope=runtime
+          cache-to: type=gha,scope=runtime,mode=max
+
+      - name: Build server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: agent-sandbox-server:latest
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,scope=server,mode=max
+
+      - name: Start sandbox
+        run: |
+          mkdir -p "$RUNNER_TEMP/sandbox-data"
+          {
+            echo "SANDBOX_API_KEY=$(openssl rand -hex 24)"
+            echo "SANDBOX_DATA_ROOT=$RUNNER_TEMP/sandbox-data"
+          } > .env
+          docker compose up -d --no-build sandbox-server
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8090/healthz && exit 0
+            sleep 1
+          done
+          echo "sandbox did not become healthy"; exit 1
+
+      - name: Smoke tests
+        run: |
+          ./smoke_test.sh . | tee smoke.log
+          grep -q ', 0 failed' smoke.log
+
+      - name: Server logs
+        if: always()
+        run: docker compose logs --no-log-prefix sandbox-server

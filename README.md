@@ -44,6 +44,11 @@ cd agent-sandbox
 SANDBOX_API_KEY=xxxxxxxxxxxxxxxx go run .
 ```
 
+## CI 与发布
+
+- `.github/workflows/ci.yml`：push 到 main 或提 PR 时运行 gofmt / vet / 单元测试，然后构建两个镜像、启动服务并跑完整的 `smoke_test.sh`
+- `.github/workflows/release.yml`：推送 `v*` 标签（如 `git tag v0.1.0 && git push origin v0.1.0`）时构建 amd64 + arm64 镜像，发布到 `ghcr.io/runify-dev/agent-sandbox-server` 和 `ghcr.io/runify-dev/agent-sandbox-runtime`。runtime 镜像的 arm64 部分通过 QEMU 构建，耗时较长
+
 ## API
 
 所有 `/v1/*` 接口都需要携带 `X-API-Key: <key>` 或 `Authorization: Bearer <key>`。
