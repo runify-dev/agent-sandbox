@@ -57,6 +57,7 @@ func main() {
 		"network", cfg.Network)
 
 	var proxySrv *http.Server
+	var forwarder *tcpForwarder
 	if cfg.Network == "proxy" {
 		proxySrv = &http.Server{Addr: cfg.ProxyListen, Handler: newEgressProxy(cfg), ReadHeaderTimeout: 10 * time.Second}
 		go func() {
@@ -70,6 +71,15 @@ func main() {
 		if slices.Contains(cfg.EgressAllowlist, "*") {
 			slog.Warn("egress allowlist contains *, sandboxes can reach any public host (private addresses still blocked)")
 		}
+		if len(cfg.TCPForwards) > 0 {
+			forwarder = newTCPForwarder(cfg.TCPForwards, m.egressNets)
+			if err := forwarder.Start(); err != nil {
+				fatal("start tcp forwards", err)
+			}
+			slog.Info("tcp forwards listening", "forwards", cfg.TCPForwards)
+		}
+	} else if len(cfg.TCPForwards) > 0 {
+		slog.Warn("SANDBOX_TCP_FORWARDS only works with SANDBOX_NETWORK=proxy, ignored")
 	}
 
 	<-ctx.Done()
@@ -79,6 +89,9 @@ func main() {
 	_ = srv.Shutdown(shutdownCtx)
 	if proxySrv != nil {
 		_ = proxySrv.Close()
+	}
+	if forwarder != nil {
+		forwarder.Close()
 	}
 	m.Close()
 }

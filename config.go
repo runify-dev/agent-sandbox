@@ -28,6 +28,7 @@ type Config struct {
 	ProxyURL          string          // 沙箱容器内访问代理的地址
 	PipIndexURL       string          // 注入容器的 PIP_INDEX_URL，可指向国内镜像
 	NpmRegistry       string          // 注入容器的 npm registry
+	TCPForwards       []tcpForward    // proxy 模式下的 TCP 转发（数据库等非 HTTP 协议）
 
 	MemoryMB  int64
 	CPUs      float64
@@ -87,6 +88,11 @@ func loadConfig() (*Config, error) {
 		}
 		cfg.EgressPrivateNets = append(cfg.EgressPrivateNets, n)
 	}
+	forwards, err := parseTCPForwards(os.Getenv("SANDBOX_TCP_FORWARDS"), cfg.Listen, cfg.ProxyListen)
+	if err != nil {
+		errs = append(errs, err)
+	}
+	cfg.TCPForwards = forwards
 	if len(cfg.APIKey) < 16 {
 		errs = append(errs, errors.New("SANDBOX_API_KEY is required and must be at least 16 characters"))
 	}

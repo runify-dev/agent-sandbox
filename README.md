@@ -215,6 +215,7 @@ def download_from_sandbox(scope: str, session: str | None, path: str, dest: str)
 | `SANDBOX_EGRESS_ALLOWLIST` | `pypi.org,files.pythonhosted.org,registry.npmjs.org` | proxy 模式下允许访问的域名，逗号分隔 |
 | `SANDBOX_EGRESS_PORTS` | `80,443` | proxy 模式下允许访问的端口 |
 | `SANDBOX_EGRESS_PRIVATE_CIDRS` | 空 | 额外允许访问的内网地址段，如内部镜像源 `10.1.2.3/32` |
+| `SANDBOX_TCP_FORWARDS` | 空 | proxy 模式下的 TCP 转发，用于数据库等非 HTTP 协议，格式 `监听端口=目标主机:端口`，多条用逗号分隔，见下方「连接数据库」 |
 | `SANDBOX_PIP_INDEX_URL` | 空 | 注入容器的 `PIP_INDEX_URL` |
 | `SANDBOX_NPM_REGISTRY` | 空 | 注入容器的 npm registry |
 | `SANDBOX_PROXY_NETWORK` | `agent-sandbox-egress` | 沙箱接入的 internal 网络（compose 自动创建） |
@@ -254,6 +255,32 @@ docker compose logs sandbox-server | grep "egress denied"
 ```
 
 如果原因是 `destination 198.18.x.x is a private or reserved address`，说明宿主机开着 Clash / Surge 等 fake-ip 模式的代理，域名被解析到了 `198.18.0.0/15`。本地开发时可以在 `.env` 里加 `SANDBOX_EGRESS_PRIVATE_CIDRS=198.18.0.0/15` 放行，服务器上不要这样配置。
+
+### 连接数据库（TCP 转发）
+
+PostgreSQL、MySQL、Redis 等数据库用的是自己的 TCP 协议，不走 HTTP 代理，所以白名单对它们不起作用。需要让沙箱访问某个数据库时，在 `.env` 里显式配置转发：
+
+```bash
+# 沙箱连 sandbox-egress-proxy:5432 会被转发到 192.168.11.153:5432
+SANDBOX_TCP_FORWARDS=5432=192.168.11.153:5432,3306=10.0.0.8:3306
+```
+
+执行 `docker compose up -d` 生效后，沙箱里用代理主机名加监听端口连接：
+
+```python
+import psycopg
+conn = psycopg.connect(host="sandbox-egress-proxy", port=5432, dbname="mydb", user="readonly", password="...")
+```
+
+```bash
+psql -h sandbox-egress-proxy -p 5432 -U readonly mydb
+```
+
+- 只转发到配置里写明的目标，沙箱不能自己指定地址，所以不受白名单和内网地址限制
+- 只接受来自沙箱网络的连接，同一个 compose 里的其他容器连不上
+- 沙箱里的环境变量 `SANDBOX_TCP_FORWARDS` 会列出可用的转发，如 `sandbox-egress-proxy:5432->192.168.11.153:5432`
+- 每次连接都会记录到服务日志（`tcp forward`）
+- 数据库账号密码需要交给沙箱里的程序，AI 能看到，请使用只读账号并只授权需要的库表
 
 `pip install` 会自动装到用户长期空间的 `/opt/user/.local`（根文件系统只读），这个 scope 下所有对话都能用。镜像里已预装常用的包，见 [runtime/requirements.txt](runtime/requirements.txt)。
 

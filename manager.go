@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -168,6 +169,18 @@ func (m *Manager) containerNetwork() (string, []string) {
 		"NO_PROXY=localhost,127.0.0.1", "no_proxy=localhost,127.0.0.1",
 		"NODE_USE_ENV_PROXY=1", // 让 Node 内置 fetch 也走代理
 	)
+	if len(m.cfg.TCPForwards) > 0 {
+		// 告诉沙箱里的程序怎么连：<代理主机>:<监听端口> 会被转发到对应目标
+		host := "sandbox-egress-proxy"
+		if pu, err := url.Parse(u); err == nil && pu.Hostname() != "" {
+			host = pu.Hostname()
+		}
+		hints := make([]string, len(m.cfg.TCPForwards))
+		for i, f := range m.cfg.TCPForwards {
+			hints[i] = host + ":" + f.ListenPort + "->" + f.Target
+		}
+		env = append(env, "SANDBOX_TCP_FORWARDS="+strings.Join(hints, ","))
+	}
 	return m.cfg.ProxyNetwork, env
 }
 
