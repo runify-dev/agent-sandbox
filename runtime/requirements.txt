@@ -58,3 +58,14 @@ pytesseract
 markdown
 html2text
 jinja2
+
+# 数据库（sqlite3 是 Python 内置的）
+sqlalchemy
+psycopg[binary]
+pymysql
+oracledb
+pymssql
+redis
+pymongo
+duckdb
+clickhouse-connect

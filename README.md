@@ -16,7 +16,7 @@
 - chatA 的容器里根本没有挂载 chatB 的目录，对话之间真正隔离；`/opt/user` 所有对话共享
 - 不传 session 时，`/opt/workspace` 和 `/opt/user` 都是 scope 的长期空间
 - 第一次调用时创建容器，之后的调用通过 `exec` 复用；空闲超过 `SANDBOX_IDLE_TTL`（默认 10 分钟）自动销毁容器，**数据保留**
-- 运行时镜像包含 Python 3.13、Node.js 22、ffmpeg 和常用的 Python 包
+- 运行时镜像包含 Python 3.13、Node.js 22、ffmpeg、LibreOffice、git/curl/wget/zip/unzip/jq、数据库客户端（sqlite3/psql/mysql/redis-cli）和常用的 Python 包（含 SQLAlchemy、PostgreSQL/MySQL/Oracle/SQL Server/Redis/MongoDB/DuckDB/ClickHouse 驱动）（git 只能用 https 克隆，ssh 不可用）
 
 建议在给模型的工具说明里写明：当前对话的工作目录是 `/opt/workspace`，生成的文件都放在这里；`/opt/user` 是用户的长期空间，只有用户明确要求时才使用。scope 和 session 由业务方根据当前会话填写，不要让模型传。
 

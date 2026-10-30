@@ -45,6 +45,21 @@ RUN apt-get update \
         fonts-wqy-zenhei \
     && rm -rf /var/lib/apt/lists/*
 
+# 常用命令行工具与数据库客户端（git 走 HTTPS_PROXY，只支持 https 克隆，ssh 方式不可用）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        zip \
+        unzip \
+        jq \
+        sqlite3 \
+        postgresql-client \
+        default-mysql-client \
+        redis-tools \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
 RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
@@ -56,6 +71,13 @@ RUN pip install ${PIP_INDEX_URL:+--index-url $PIP_INDEX_URL} -r /tmp/requirement
 # matplotlib 默认字体不支持中文，图表里的中文会显示成方块
 RUN printf 'font.sans-serif: WenQuanYi Micro Hei, DejaVu Sans\naxes.unicode_minus: False\n' > /etc/matplotlibrc
 ENV MATPLOTLIBRC=/etc/matplotlibrc
+
+# 工作目录是宿主机挂载的，属主可能和沙箱用户对不上，git 会报 dubious ownership；
+# 沙箱里只有一个用户，信任所有目录。默认提交身份避免 git commit 因缺少 user.name 失败
+RUN git config --system --add safe.directory '*' \
+    && git config --system user.name sandbox \
+    && git config --system user.email sandbox@localhost \
+    && git config --system init.defaultBranch main
 
 RUN groupadd -g 1000 sandbox \
     && useradd -u 1000 -g 1000 -M -d /tmp -s /bin/bash sandbox \
